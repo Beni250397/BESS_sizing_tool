@@ -7,3 +7,4 @@ pvlib
 numpy
 scipy
 numba
+plotly
