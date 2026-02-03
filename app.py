@@ -1,5 +1,3 @@
-
-
 import streamlit as st
 import os
 import time
@@ -9,7 +7,6 @@ from read_csv import load_profile, generate_price_profile
 from battery_simulation import simulate_battery
 from cost_model import evaluate_annual_costs
 from optimization import optimize_battery_size
-# Hier die neue Funktion importieren (stelle sicher, dass sie in plot.py so heißt)
 from plot import plot_interactive_full_period 
 from parameters import params_base
 
@@ -20,32 +17,31 @@ st.title("🔋 BESS-Dimensionierung")
 # --- SIDEBAR: DATEI-AUSWAHL (DRAG & DROP) ---
 st.sidebar.header("📂 Dateien hochladen")
 
-# Drag & Drop für Lastprofil
+# 1. Lastprofil
 uploaded_load = st.sidebar.file_uploader(
     "Lastprofil hochladen (CSV)", 
     type=["csv"], 
     help="Falls keine Datei gewählt wird, wird ein synthetisches Lastprofil berechnet."
 )
-
-# Logik: Wenn nichts hochgeladen wurde, MUSS die Variable None sein
-load_csv_path = uploaded_load if uploaded_load is not None else None
-# Hinweis in der Sidebar, was aktuell genutzt wird
-if load_csv_path is None:
+if uploaded_load is None:
     st.sidebar.info("ℹ️ Last: Synthetisch (Default)")
+    load_csv_path = None
 else:
     st.sidebar.success(f"✅ Last: {uploaded_load.name}")
+    load_csv_path = uploaded_load
 
-# Drag & Drop für Erzeugungsprofil
+# 2. Erzeugungsprofil
 uploaded_gen = st.sidebar.file_uploader(
     "Erzeugungsprofil hochladen (CSV)", 
     type=["csv"], 
     help="Falls keine Datei gewählt wird, wird ein synthetisches Erzeugungsprofil berechnet."
 )
-gen_csv_path = uploaded_gen if uploaded_gen is not None else None
-if gen_csv_path is None:
+if uploaded_gen is None:
     st.sidebar.info("ℹ️ Erzeugung: Synthetisch (Default)")
+    gen_csv_path = None
 else:
     st.sidebar.success(f"✅ Erzeugung: {uploaded_gen.name}")
+    gen_csv_path = uploaded_gen
 
 # --- MAIN: PARAMETER ANPASSEN ---
 st.header("⚙️ Parameter")
@@ -56,23 +52,53 @@ with col1:
     cap = st.number_input('Max. Kapazität (kWh)', value=float(params_base['capacity_kwh']))
     p_charge = st.number_input('Max. Ladeleistung (kW)', value=float(params_base['p_charge_kw']))
     p_discharge = st.number_input('Max. Entladeleistung (kW)', value=float(params_base['p_discharge_kw']))
-    lifetime = st.number_input('Lebensdauer (Jahre)', value=int(params_base['lifetime_yr']))
 
 with col2:
-    st.subheader("Effizienz & SOC")
-    eta_c = st.slider('Lade-Wirkungsgrad', 0.0, 1.0, float(params_base['eta_charge']))
-    eta_d = st.slider('Entlade-Wirkungsgrad', 0.0, 1.0, float(params_base['eta_discharge']))
-    soc_min = st.slider('Min. SoC', 0.0, 1.0, float(params_base['soc_min_frac']))
-    soc_max = st.slider('Max. SoC', 0.0, 1.0, float(params_base['soc_max_frac']))
+    st.subheader("Effizienz & Alterung")
+    
+    # 1. Wirkungsgrade & SOC (jetzt in %)
+    eta_c_pct = st.slider('Lade-Wirkungsgrad (%)', 0, 100, int(params_base['eta_charge'] * 100))
+    eta_c = eta_c_pct / 100
+
+    eta_d_pct = st.slider('Entlade-Wirkungsgrad (%)', 0, 100, int(params_base['eta_discharge'] * 100))
+    eta_d = eta_d_pct / 100
+
+    soc_min_pct = st.slider('Min. SoC (%)', 0, 100, int(params_base['soc_min_frac'] * 100))
+    soc_min = soc_min_pct / 100
+
+    soc_max_pct = st.slider('Max. SoC (%)', 0, 100, int(params_base['soc_max_frac'] * 100))
+    soc_max = soc_max_pct / 100
+
+    st.markdown("---") # Optische Trennung zur Alterung
+    
+    # 2. Alterung / Verluste (wieder unten, in %)
+    c_loss_pct = st.slider(
+        'Zyklenverlust (%)', 
+        0.0, 100.0, float(params_base['cyclic_loss'] * 100),
+        step=0.5,
+        help="Kapazitätsverlust nach 5.000 Vollzyklen"
+    )
+    c_loss = c_loss_pct / 100
+
+    cal_loss_pct = st.slider(
+        'Kalendarischer Verlust / Jahr (%)', 
+        0.0, 10.0, float(params_base['calendar_loss'] * 100),
+        step=0.1,
+        help="Jährlicher Kapazitätsverlust durch Alterung"
+    )
+    cal_loss = cal_loss_pct / 100
 
 with col3:
     st.subheader("Ökonomie")
+    # Nutzungsdauer nach ganz oben
+    lifetime = st.number_input('Nutzungsdauer (Jahre)', value=int(params_base['lifetime_yr']))
+    # Restliche Kostenparameter
     capex_kwh = st.number_input('CAPEX Energie (€/kWh)', value=float(params_base['capex_per_kwh']))
     capex_kw = st.number_input('CAPEX Leistung (€/kW)', value=float(params_base['capex_per_kw']))
     opex_kwh = st.number_input('OPEX Energie (€/kWh/Jahr)', value=float(params_base['opex_per_kwhyr']))
     opex_kw = st.number_input('OPEX Leistung (€/kW/Jahr)', value=float(params_base['opex_per_kwyr']))
-    feedin = st.number_input('Einspeisefaktor (Anteil Importpreis)', value=float(params_base['feedin_fraction']))
-    discount = st.number_input('Discount Rate (Zinssatz)', value=float(params_base['discount_rate']))
+    feedin = st.number_input('Einspeisefaktor', value=float(params_base['feedin_fraction']))
+    discount = st.number_input('Discount Rate', value=float(params_base['discount_rate']))
 
 # Dictionary aktualisieren
 params_base.update({
@@ -80,6 +106,7 @@ params_base.update({
     'soc_min_frac': soc_min, 'soc_max_frac': soc_max, 'eta_charge': eta_c, 'eta_discharge': eta_d,
     'capex_per_kwh': capex_kwh, 'capex_per_kw': capex_kw, 'lifetime_yr': lifetime,
     'discount_rate': discount, 'opex_per_kwhyr': opex_kwh, 'opex_per_kwyr': opex_kw, 'feedin_fraction': feedin,
+    'cyclic_loss': c_loss, 'calendar_loss': cal_loss
 })
 
 # --- EXECUTION BUTTON ---
@@ -87,11 +114,10 @@ if st.button('🚀 Optimierung und Simulation starten'):
     with st.spinner('Berechne Optimierung...'):
         start_time = time.time()
         
-        # 1. Daten laden
+        # Simulation & Optimierung
         load_series, gen_series = load_profile(load_csv_path, gen_csv_path)
         price_profile = generate_price_profile(load_series.index)
 
-        # 2. Run optimization
         best, df_eval = optimize_battery_size(
             load_series, gen_series, price_profile, params_base, 
             cap_range_kwh=(0, params_base['capacity_kwh']), 
@@ -99,7 +125,6 @@ if st.button('🚀 Optimierung und Simulation starten'):
             p_dis_range_kw=(0, params_base['p_discharge_kw'])
         )
 
-        # 3. Bestwerte extrahieren
         best_params = best['params']
         best_params.update({
             'capacity_kwh': float(best['capacity_kwh']),
@@ -107,7 +132,6 @@ if st.button('🚀 Optimierung und Simulation starten'):
             'p_discharge_kw': float(best['p_discharge_kw'])
         })
 
-        # 4. Simulationen
         sim_best = simulate_battery(load_series, gen_series, best_params)
         econ_best = evaluate_annual_costs(sim_best, best_params, price_profile)
 
@@ -116,7 +140,6 @@ if st.button('🚀 Optimierung und Simulation starten'):
         sim_nobatt = simulate_battery(load_series, gen_series, params_nobatt)
         econ_nobatt = evaluate_annual_costs(sim_nobatt, params_nobatt, price_profile)
 
-        # 5. Kennzahlen
         autarky_best = 1.0 - sim_best['total_import_kwh'] / (load_series.sum() * params_base['timestep_hours'])
         autarky_nobatt = 1.0 - sim_nobatt['total_import_kwh'] / (load_series.sum() * params_base['timestep_hours'])
         runtime = time.time() - start_time
@@ -125,38 +148,32 @@ if st.button('🚀 Optimierung und Simulation starten'):
         st.success(f"Berechnung abgeschlossen in {runtime:.2f} Sekunden")
         
         st.header("📊 Analyse-Ergebnisse")
-        res1, res2, res3 = st.columns(3)
+        res1, res2, res3, res4 = st.columns(4)
+        
+        # Spalte 1: Dimensionierung
         res1.metric("Optimale Kapazität", f"{best['capacity_kwh']:.1f} kWh")
         res1.metric("Max. Ladeleistung", f"{best['p_charge_kw']:.1f} kW")
         res1.metric("Max. Entladeleistung", f"{best['p_discharge_kw']:.1f} kW")
-        
 
-        # Berechnung der prozentualen Ersparnis
+        # Spalte 2: Technik (Durchsatz & SoH)
+        cap_loss_pct = (1 - best['soh_final'] / best_params['capacity_kwh']) * 100
+        yearly_th = best.get('throughput', 0.0) / 1000 
+        res2.metric("Durchsatz (Jahr)", f"{yearly_th:.1f} MWh")
+        res2.metric("Finaler SoH", f"{best['soh_final']:.1f} kWh", delta=f"-{cap_loss_pct:.2f} %", delta_color="normal")
+
+        # Spalte 3: Ökonomie
         cost_with = econ_best['total_annual_cost']
         cost_no = econ_nobatt['total_cost_no_batt']
-        # Vermeidung von Division durch Null
         rel_savings = ((cost_with / cost_no) - 1) * 100 if cost_no != 0 else 0
         
-        res2.metric("Jährliche Ersparnis", f"{econ_best['savings_vs_no_batt']:.2f} €")
-        
-        # Spalte 2: Kosten-Vergleich
-        res2.metric(
-            label="Kosten mit Batterie", 
-            value=f"{cost_with:.2f} €/a", 
-            delta=f"{rel_savings:.1f} %",
-            delta_color="green" # Zeigt Senkung automatisch in Grün an
-        )
-        res2.metric("Kosten ohne Batterie", f"{econ_nobatt['total_cost_no_batt']:.2f} €/a")
-        
-        res3.metric("Autarkiegrad", f"{autarky_best*100:.1f} %", f"{(autarky_best-autarky_nobatt)*100:.1f} %")
-        
+        res3.metric("Jährliche Ersparnis", f"{econ_best['savings_vs_no_batt']:.2f} €")
+        res3.metric("Kosten mit BESS", f"{cost_with:.2f} €/a", delta=f"{rel_savings:.1f} %", delta_color="inverse")
+        res3.metric("Kosten ohne BESS", f"{econ_nobatt['total_cost_no_batt']:.2f} €/a")
 
-        # --- PLOTTING (NEU: Nur eine interaktive Gesamtansicht) ---
+        # Spalte 4: Autarkie
+        res4.metric("Autarkiegrad", f"{autarky_best*100:.1f} %", f"{(autarky_best-autarky_nobatt)*100:.1f} %")
+
+        # --- PLOTTING ---
         st.header("📈 Interaktive Detailanalyse")
-        st.info("💡 Nutze die Maus zum Zoomen (Rechteck ziehen) oder Shift+Linksklick zum Verschieben. Doppelklick setzt den Zoom zurück.")
-
-        # Aufruf der neuen Plotly-Funktion mit dem gesamten Zeitraum
         fig = plot_interactive_full_period(sim_best)
-        
-        # Anzeige in Streamlit
         st.plotly_chart(fig, use_container_width=True)
