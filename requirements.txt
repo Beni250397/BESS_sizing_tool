@@ -6,3 +6,4 @@ pyomo
 pvlib
 numpy
 scipy
+numba
