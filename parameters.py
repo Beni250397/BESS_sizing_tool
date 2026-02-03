@@ -26,4 +26,7 @@ params_base = {
     # 'eol_soh': 0.8,           # End of Life bei 80% Restkapazität
     # 'cycle_life': 6000,       # Volllastzyklen bis EoL
     # 'calendar_life_yr': 20,   # Jahre bis EoL nur durch Zeit
+
+    'cyclic_loss': 0.2, # 20% Verlust in 5000 Zyklen
+    'calendar_loss': 0.02
 }
