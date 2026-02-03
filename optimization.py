@@ -77,9 +77,12 @@ def optimize_battery_size(load_kW, gen_kW, price_profile, params_base,
     best = {
         'params': best_params,
         'sim': best_sim,
+        'soh_final': best_sim['soh_final_kWh'],
+        'throughput': best_sim['throughput_kwh'],
         'capacity_kwh': best_x[0],
         'p_charge_kw': best_x[1],
         'p_discharge_kw': best_x[2]
+
     }
 
     df_full = pd.DataFrame.from_records(records)
