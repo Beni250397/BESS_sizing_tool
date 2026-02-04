@@ -29,12 +29,20 @@ def optimize_battery_size(load_kW, gen_kW, price_profile, params_base,
         params['p_charge_kw'] = float(x[1])
         params['p_discharge_kw'] = float(x[2])
 
+        # 1. Simulation und Kostenberechnung
         bat_results = simulate_battery(load_kW, gen_kW, params)
         cost_results = evaluate_annual_costs(bat_results, params, price_profile)
 
-        autarky = 1.0 - bat_results['total_import_kwh'] / (load_kW.sum()*params.get('timestep_hours',0.25)) if load_kW.sum() > 0 else 0.0
+        # 2. Autarkie korrekt berechnen (Importierte Energie vs. Gesamtbedarf)
+        dt = params.get('timestep_hours', 0.25)
+        total_load_kwh = load_kW.sum() * dt  # Gesamtenergiebedarf im Zeitraum
+        
+        if total_load_kwh > 0:
+            autarky = 1.0 - (bat_results['total_import_kwh'] / total_load_kwh)
+        else:
+            autarky = 0.0
 
-        # Speichere Ergebnis
+        # Speichere Ergebnis (Wichtig: cost_results['total_annual_cost'] ist nun dank Scaling korrekt)
         records.append({
             'capacity_kwh': x[0],
             'p_charge_kw': x[1],
