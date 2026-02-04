@@ -10,11 +10,19 @@ from optimization import optimize_battery_size
 from plot import plot_interactive_full_period 
 from parameters import params_base
 
+# --- INITIALISIERUNG SESSION STATE (NEU) ---
+# Wir kopieren die Werte aus params_base einmalig in den Session State.
+# So "gehören" die Werte Streamlit und werden nicht bei jedem Klick resettet.
+for key, val in params_base.items():
+    if key not in st.session_state:
+        st.session_state[key] = val
+
 st.set_page_config(page_title="BESS Sizing Tool", layout="wide")
+
 
 st.title("🔋 BESS-Dimensionierung")
 
-# --- SIDEBAR: DATEI-AUSWAHL (DRAG & DROP) ---
+# --- SIDEBAR: DATEI-AUSWAHL & STANDORT ---
 st.sidebar.header("📂 Dateien hochladen")
 
 # 1. Lastprofil
@@ -43,62 +51,121 @@ else:
     st.sidebar.success(f"✅ Erzeugung: {uploaded_gen.name}")
     gen_csv_path = uploaded_gen
 
+
+# --- NEU: STANDORT-PARAMETER FÜR SYNTHESE ---
+st.sidebar.markdown("---")
+st.sidebar.header("📍 Erzeugung & Last")
+st.sidebar.caption("Wird genutzt, wenn keine CSV hochgeladen wurde")
+
+lat_input = st.sidebar.number_input("Breitengrad (Lat)", value=50.1319, format="%.4f")
+lon_input = st.sidebar.number_input("Längengrad (Lon)", value=8.6838, format="%.4f")
+peak_pv_input = st.sidebar.number_input("PV Leistung (kWp)", value=20.0)
+peak_load_input = st.sidebar.number_input("Max. Last (kW)", value=20.0)
+
 # --- MAIN: PARAMETER ANPASSEN ---
 st.header("⚙️ Parameter")
 col1, col2, col3 = st.columns(3)
 
+# ... (Dein restlicher Parameter-Code bleibt gleich bis zum Execution Button) ...
+
 with col1:
     st.subheader("Kapazität & Leistung")
-    cap = st.number_input('Max. Kapazität (kWh)', value=float(params_base['capacity_kwh']))
-    p_charge = st.number_input('Max. Ladeleistung (kW)', value=float(params_base['p_charge_kw']))
-    p_discharge = st.number_input('Max. Entladeleistung (kW)', value=float(params_base['p_discharge_kw']))
+    # Wir nutzen 'key', damit Streamlit den Wert direkt im session_state verwaltet
+    cap = st.number_input(
+        'Max. Kapazität (kWh)', 
+        value=float(st.session_state['capacity_kwh']),
+        key='capacity_kwh_input' 
+    )
+    p_charge = st.number_input(
+        'Max. Ladeleistung (kW)', 
+        value=float(st.session_state['p_charge_kw']),
+        key='p_charge_kw_input'
+    )
+    p_discharge = st.number_input(
+        'Max. Entladeleistung (kW)', 
+        value=float(st.session_state['p_discharge_kw']),
+        key='p_discharge_kw_input'
+    )
 
 with col2:
     st.subheader("Effizienz & Alterung")
-    
-    # 1. Wirkungsgrade & SOC (jetzt in %)
-    eta_c_pct = st.slider('Lade-Wirkungsgrad (%)', 0, 100, int(params_base['eta_charge'] * 100))
+    eta_c_pct = st.slider(
+        'Lade-Wirkungsgrad (%)',
+        0, 100,
+        int(params_base['eta_charge'] * 100)
+    )
     eta_c = eta_c_pct / 100
 
-    eta_d_pct = st.slider('Entlade-Wirkungsgrad (%)', 0, 100, int(params_base['eta_discharge'] * 100))
+    eta_d_pct = st.slider(
+        'Entlade-Wirkungsgrad (%)',
+        0, 100,
+        int(params_base['eta_discharge'] * 100)
+    )
     eta_d = eta_d_pct / 100
 
-    soc_min_pct = st.slider('Min. SoC (%)', 0, 100, int(params_base['soc_min_frac'] * 100))
+    soc_min_pct = st.slider(
+        'Min. SoC (%)',
+        0, 100,
+        int(params_base['soc_min_frac'] * 100)
+    )
     soc_min = soc_min_pct / 100
 
-    soc_max_pct = st.slider('Max. SoC (%)', 0, 100, int(params_base['soc_max_frac'] * 100))
+    soc_max_pct = st.slider(
+        'Max. SoC (%)',
+        0, 100,
+        int(params_base['soc_max_frac'] * 100)
+    )
     soc_max = soc_max_pct / 100
 
-    st.markdown("---") # Optische Trennung zur Alterung
-    
-    # 2. Alterung / Verluste (wieder unten, in %)
+    st.markdown("---")
+
     c_loss_pct = st.slider(
-        'Zyklenverlust (%)', 
-        0.0, 100.0, float(params_base['cyclic_loss'] * 100),
-        step=0.5,
-        help="Kapazitätsverlust nach 5.000 Vollzyklen"
+        'Zyklenverlust (%)',
+        0.0, 100.0,
+        float(params_base['cyclic_loss'] * 100),
+        step=0.5
     )
     c_loss = c_loss_pct / 100
 
     cal_loss_pct = st.slider(
-        'Kalendarischer Verlust / Jahr (%)', 
-        0.0, 10.0, float(params_base['calendar_loss'] * 100),
-        step=0.1,
-        help="Jährlicher Kapazitätsverlust durch Alterung"
+        'Kalendarischer Verlust / Jahr (%)',
+        0.0, 10.0,
+        float(params_base['calendar_loss'] * 100),
+        step=0.1
     )
     cal_loss = cal_loss_pct / 100
 
 with col3:
     st.subheader("Ökonomie")
-    # Nutzungsdauer nach ganz oben
-    lifetime = st.number_input('Nutzungsdauer (Jahre)', value=int(params_base['lifetime_yr']))
-    # Restliche Kostenparameter
-    capex_kwh = st.number_input('CAPEX Energie (€/kWh)', value=float(params_base['capex_per_kwh']))
-    capex_kw = st.number_input('CAPEX Leistung (€/kW)', value=float(params_base['capex_per_kw']))
-    opex_kwh = st.number_input('OPEX Energie (€/kWh/Jahr)', value=float(params_base['opex_per_kwhyr']))
-    opex_kw = st.number_input('OPEX Leistung (€/kW/Jahr)', value=float(params_base['opex_per_kwyr']))
-    feedin = st.number_input('Einspeisefaktor', value=float(params_base['feedin_fraction']))
-    discount = st.number_input('Discount Rate', value=float(params_base['discount_rate']))
+    lifetime = st.number_input(
+        'Nutzungsdauer (Jahre)',
+        value=int(params_base['lifetime_yr'])
+    )
+    capex_kwh = st.number_input(
+        'CAPEX Energie (€/kWh)',
+        value=float(params_base['capex_per_kwh'])
+    )
+    capex_kw = st.number_input(
+        'CAPEX Leistung (€/kW)',
+        value=float(params_base['capex_per_kw'])
+    )
+    opex_kwh = st.number_input(
+        'OPEX Energie (€/kWh/Jahr)',
+        value=float(params_base['opex_per_kwhyr'])
+    )
+    opex_kw = st.number_input(
+        'OPEX Leistung (€/kW/Jahr)',
+        value=float(params_base['opex_per_kwyr'])
+    )
+    feedin = st.number_input(
+        'Einspeisefaktor',
+        value=float(params_base['feedin_fraction'])
+    )
+    discount = st.number_input(
+        'Discount Rate',
+        value=float(params_base['discount_rate'])
+    )
+
 
 # Dictionary aktualisieren
 params_base.update({
@@ -114,8 +181,16 @@ if st.button('🚀 Optimierung und Simulation starten'):
     with st.spinner('Berechne Optimierung...'):
         start_time = time.time()
         
-        # Simulation & Optimierung
-        load_series, gen_series = load_profile(load_csv_path, gen_csv_path)
+        # --- ANGEPASST: Nutzt nun die Sidebar-Inputs ---
+        load_series, gen_series = load_profile(
+            load_csv_path, 
+            gen_csv_path, 
+            lat=lat_input, 
+            lon=lon_input, 
+            peak_kw=peak_pv_input, 
+            peak_load=peak_load_input
+        )
+        
         price_profile = generate_price_profile(load_series.index)
 
         best, df_eval = optimize_battery_size(
@@ -140,8 +215,9 @@ if st.button('🚀 Optimierung und Simulation starten'):
         sim_nobatt = simulate_battery(load_series, gen_series, params_nobatt)
         econ_nobatt = evaluate_annual_costs(sim_nobatt, params_nobatt, price_profile)
 
-        autarky_best = 1.0 - sim_best['total_import_kwh'] / (load_series.sum() * params_base['timestep_hours'])
-        autarky_nobatt = 1.0 - sim_nobatt['total_import_kwh'] / (load_series.sum() * params_base['timestep_hours'])
+        total_load_kwh = load_series.sum() * params_base.get('timestep_hours', 0.25)
+        autarky_best = 1.0 - (sim_best['total_import_kwh'] / total_load_kwh) if total_load_kwh > 0 else 0.0
+        autarky_nobatt = 1.0 - (sim_nobatt['total_import_kwh'] / total_load_kwh) if total_load_kwh > 0 else 0.0
         runtime = time.time() - start_time
 
         # --- ERGEBNISSE ANZEIGEN ---
@@ -157,7 +233,11 @@ if st.button('🚀 Optimierung und Simulation starten'):
 
         # Spalte 2: Technik (Durchsatz & SoH)
         cap_loss_pct = (1 - best['soh_final'] / best_params['capacity_kwh']) * 100
-        yearly_th = best.get('throughput', 0.0) / 1000 
+        # Berechne den Skalierungsfaktor auch hier im UI
+        duration_days = (load_series.index[-1] - load_series.index[0]).total_seconds() / (24 * 3600)
+        scaling_factor = 365.0 / duration_days if duration_days > 0 else 1.0
+        # Hochgerechneter Durchsatz in MWh
+        yearly_th = (sim_best.get('throughput_kwh', 0.0) * scaling_factor) / 1000
         res2.metric("Durchsatz (Jahr)", f"{yearly_th:.1f} MWh")
         res2.metric("Finaler SoH", f"{best['soh_final']:.1f} kWh", delta=f"-{cap_loss_pct:.2f} %", delta_color="normal")
 
@@ -175,5 +255,32 @@ if st.button('🚀 Optimierung und Simulation starten'):
 
         # --- PLOTTING ---
         st.header("📈 Interaktive Detailanalyse")
+        
         fig = plot_interactive_full_period(sim_best)
+
+        # WICHTIG: Hier nutzen wir 'timeline', da deine Funktion so benannt ist
+        if 'timeline' in sim_best:
+            df_plot = sim_best['timeline']
+            
+            # Mitte des Zeitraums finden
+            mid_index = len(df_plot) // 2
+            
+            # Bereich festlegen: 1 Woche (bei 15-Min-Intervallen sind 672 Zeilen = 7 Tage)
+            # Wir nehmen 336 Schritte (3,5 Tage) vor und nach der Mitte
+            start_zoom = df_plot.index[max(0, mid_index - 336)]
+            end_zoom = df_plot.index[min(len(df_plot)-1, mid_index + 336)]
+
+            # Den initialen Zoom-Bereich in Plotly setzen
+            fig.update_xaxes(range=[start_zoom, end_zoom])
+
+        # Bedienungshinweise für deine Nutzer
+        st.info("""
+        **🔍 Bedienungsanleitung:**
+        * **Zoom:** linke Maustaste
+        * **Verschieben:** Shift + linke Maustaste
+        * **Zurück zur Übersicht:** Doppelklick
+        * **Zur Jahresansicht:** 2 x Doppelklick
+                
+        """)
+
         st.plotly_chart(fig, use_container_width=True)
