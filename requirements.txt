@@ -6,5 +6,6 @@ pyomo
 pvlib
 numpy
 scipy
-numba
+numba>=0.59.0
 plotly
+
