@@ -28,5 +28,11 @@ params_base = {
     # 'calendar_life_yr': 20,   # Jahre bis EoL nur durch Zeit
 
     'cyclic_loss': 0.2, # 20% Verlust in 5000 Zyklen
-    'calendar_loss': 0.02
+    'calendar_loss': 0.02, # 2% pro Jahr
+
+    'lat': 50.1319,
+    'lon': 8.6838,
+    'peak_gen_kW': 20,
+    'gen_type': 'PV',
+    'peak_load_kW': 20
 }
