@@ -96,7 +96,7 @@ def plot_interactive_full_period(sim_best):
 
     # --- PLOT 3: Lastflüsse ---
     flows = [('pv_to_load_kW', 'PV zu Last', "#F6FF00"),
-             ('discharge_kW', 'Batterie Entladung', "#0026FF"),
+             ('discharge_kW', 'Batterie Entladung', "#00A6FF"),
              ('charge_kW', 'Batterie Ladung (PV)', "#001AAE")]
     
     for col, label, color in flows:
