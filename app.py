@@ -197,16 +197,17 @@ with st.spinner('Lade Profile für Vorschau...'):
 
 # Plot des Preisprofils (z.B. die ersten 7 Tage zur Übersicht)
 import plotly.express as px
+# Reiner Spotpreis für die Visualisierung
+price_spot_only = price_preview - 0.14  # Aufschlag abziehen
+
 fig_price = px.line(
-    x=price_preview.index, 
-    y=price_preview.values, 
-    labels={'x': 'Zeit', 'y': 'Preis (€/kWh)'},
-    title="Börsenstrompreis (Spotmarkt) + Zuschläge",
+    x=price_spot_only.index, 
+    y=price_spot_only.values, 
+    labels={'x': 'Zeit', 'y': 'Spotpreis (€/kWh)'},
+    title="Börsenstrompreis (Spotmarkt, ohne Aufschläge)",
     line_shape="hv"
 )
 fig_price.update_layout(height=300, margin=dict(l=20, r=20, t=40, b=20))
-# Optional: Nur die erste Woche anzeigen für bessere Performance beim Laden
-# fig_price.update_xaxes(range=[price_preview.index[0], price_preview.index[min(len(price_preview)-1, 672)]])
 
 st.plotly_chart(fig_price, use_container_width=True)
 # --- EXECUTION BUTTON ---
@@ -318,4 +319,5 @@ if st.button('🚀 Optimierung und Simulation starten'):
         """)
 
         st.plotly_chart(fig, use_container_width=True)
+
 
