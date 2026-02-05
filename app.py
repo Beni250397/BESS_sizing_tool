@@ -193,7 +193,7 @@ with st.spinner('Lade Profile für Vorschau...'):
         peak_kw=peak_pv_input, 
         peak_load=peak_load_input
     )
-    price_preview = generate_price_profile(load_preview.index, 'SpotPreis_2018_2025.csv')
+    price_preview = generate_price_profile(load_preview.index, 'csv/SpotPreis_2018_2025.csv')
 
 # Plot des Preisprofils (z.B. die ersten 7 Tage zur Übersicht)
 import plotly.express as px
@@ -201,7 +201,7 @@ fig_price = px.line(
     x=price_preview.index, 
     y=price_preview.values, 
     labels={'x': 'Zeit', 'y': 'Preis (€/kWh)'},
-    title="Börsenstrompreis (Spotmarkt)",
+    title="Börsenstrompreis (Spotmarkt) + Zuschläge",
     line_shape="hv"
 )
 fig_price.update_layout(height=300, margin=dict(l=20, r=20, t=40, b=20))
@@ -224,7 +224,7 @@ if st.button('🚀 Optimierung und Simulation starten'):
             peak_load=peak_load_input
         )
         
-        price_profile = generate_price_profile(load_series.index, 'SpotPreis_2018_2025.csv')
+        price_profile = generate_price_profile(load_series.index, 'csv/SpotPreis_2018_2025.csv')
 
         best, df_eval = optimize_battery_size(
             load_series, gen_series, price_profile, params_base, 
@@ -318,4 +318,3 @@ if st.button('🚀 Optimierung und Simulation starten'):
         """)
 
         st.plotly_chart(fig, use_container_width=True)
-
