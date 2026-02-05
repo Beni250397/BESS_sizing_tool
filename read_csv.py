@@ -10,19 +10,23 @@ def load_profile(load_input, gen_input, lat=50.1319, lon=8.6838, peak_kw=20, pea
     gen_series = pd.Series(dtype=float)
 
     # 1. Dateien einlesen
-    # Wir prüfen nicht mehr auf os.path.exists, da UploadedFile kein Pfad ist.
-    # Wenn load_input nicht None ist, versuchen wir es zu lesen.
     if load_input is not None:
         try:
             load_series = read_quarter_hour_csv(load_input)
-            print(f"✅ Lastprofil erfolgreich geladen.")
+            if load_series.empty:
+                print("⚠️ Lastprofil-CSV war leer oder fehlerhaft.")
+            else:
+                print(f"✅ Lastprofil erfolgreich geladen. Einträge: {len(load_series)}")
         except Exception as e:
             print(f"❌ Fehler beim Laden des Lastprofils: {e}")
 
     if gen_input is not None:
         try:
             gen_series = read_quarter_hour_csv(gen_input)
-            print(f"✅ Erzeugungsprofil erfolgreich geladen.")
+            if gen_series.empty:
+                print("⚠️ Erzeugungsprofil-CSV war leer oder fehlerhaft.")
+            else:
+                print(f"✅ Erzeugungsprofil erfolgreich geladen. Einträge: {len(gen_series)}")
         except Exception as e:
             print(f"❌ Fehler beim Laden des Erzeugungsprofils: {e}")
 
@@ -59,7 +63,12 @@ def load_profile(load_input, gen_input, lat=50.1319, lon=8.6838, peak_kw=20, pea
 
 def read_quarter_hour_csv(path):
     try:
-        # Einlesen mit automatischer Erkennung (Komma, Semikolon etc.)
+        # Falls es ein Stream (Streamlit Upload) ist, an den Anfang springen
+        if hasattr(path, 'seek'):
+            path.seek(0)
+
+        # Einlesen: Wir erzwingen hier oft das Trennzeichen, 
+        # da sep=None mit engine='python' bei manchen Uploads zickt
         df = pd.read_csv(path, sep=None, engine='python', encoding='utf-8-sig')
         df.columns = [c.strip() for c in df.columns]
 
@@ -219,52 +228,97 @@ def generate_default_gen(idx, lat=50.1319, lon=8.6838, peak_kw=20.0):
 # ------------------ Price profile generator ------------------
 
 
-def generate_price_profile(idx):
-    """
-    Realistisches Preisprofil 2026 für Gewerbe/Privat (20 kWp Bereich).
-    Beinhaltet Beschaffung + Netzentgelte + Steuern.
-    """
-    hours = np.array([t.hour + t.minute/60.0 for t in idx])
-    day_of_year = np.array([t.timetuple().tm_yday for t in idx])
+# def generate_price_profile(idx):
+#     """
+#     Realistisches Preisprofil 2026 für Gewerbe/Privat (20 kWp Bereich).
+#     Beinhaltet Beschaffung + Netzentgelte + Steuern.
+#     """
+#     hours = np.array([t.hour + t.minute/60.0 for t in idx])
+#     day_of_year = np.array([t.timetuple().tm_yday for t in idx])
     
-    # 1. Grundpreis (Alles inklusive: Energie + Netzentgelte + Umlagen)
-    # 2026 realistisch für KMU/Privat: ca. 28 - 32 Cent/kWh
-    base_price = 0.28  
+#     # 1. Grundpreis (Alles inklusive: Energie + Netzentgelte + Umlagen)
+#     # 2026 realistisch für KMU/Privat: ca. 28 - 32 Cent/kWh
+#     base_price = 0.28  
     
-    # 2. Die "Entenkurve" (Solar-Dip am Mittag, Peak am Abend)
-    # Mittags sinkt der Preis durch PV-Überangebot im Netz
-    solar_dip = -0.06 * np.exp(-((hours-13)/2.5)**2) 
+#     # 2. Die "Entenkurve" (Solar-Dip am Mittag, Peak am Abend)
+#     # Mittags sinkt der Preis durch PV-Überangebot im Netz
+#     solar_dip = -0.06 * np.exp(-((hours-13)/2.5)**2) 
     
-    # Abend-Peak (wenn alle kochen und die Sonne weg ist)
-    evening_peak = 0.08 * np.exp(-((hours-19)/3.0)**2)
+#     # Abend-Peak (wenn alle kochen und die Sonne weg ist)
+#     evening_peak = 0.08 * np.exp(-((hours-19)/3.0)**2)
     
-    # 3. Saisonalität
-    # Im Winter ist Strom tendenziell teurer (weniger PV, mehr Heizlast)
-    seasonal = 0.02 * np.cos((day_of_year - 15) / 365 * 2 * np.pi)
+#     # 3. Saisonalität
+#     # Im Winter ist Strom tendenziell teurer (weniger PV, mehr Heizlast)
+#     seasonal = 0.02 * np.cos((day_of_year - 15) / 365 * 2 * np.pi)
     
-    # 4. Negative Preise (Extremereignisse im Sommer bei Wind + Sonne)
-    rng = np.random.default_rng(42)
-    # Ca. 0.5% der Zeit (ca. 45h im Jahr) gibt es Preisstürze
-    n_neg = max(1, int(len(idx)*0.005))
-    neg_mask = rng.choice(len(idx), size=n_neg, replace=False)
+#     # 4. Negative Preise (Extremereignisse im Sommer bei Wind + Sonne)
+#     rng = np.random.default_rng(42)
+#     # Ca. 0.5% der Zeit (ca. 45h im Jahr) gibt es Preisstürze
+#     n_neg = max(1, int(len(idx)*0.005))
+#     neg_mask = rng.choice(len(idx), size=n_neg, replace=False)
 
     
-    price = base_price + solar_dip + evening_peak + seasonal
+#     price = base_price + solar_dip + evening_peak + seasonal
     
-    # Bei negativen Preisen fällt oft nur der Energieteil weg, 
-    # Steuern/Netzentgelte bleiben meist (daher selten echt negativ für Endkunden)
-    price[neg_mask] = 0.05 
+#     # Bei negativen Preisen fällt oft nur der Energieteil weg, 
+#     # Steuern/Netzentgelte bleiben meist (daher selten echt negativ für Endkunden)
+#     price[neg_mask] = 0.05 
     
-    return pd.Series(price, index=idx, name='price_EUR_per_kWh')
-# def load_price_profile_from_csv(csv_path, idx):
-#     df = pd.read_csv(csv_path, parse_dates=["timestamp"])
-#     df = df.set_index("timestamp")
+#     return pd.Series(price, index=idx, name='price_EUR_per_kWh')
 
-#     # auf deinen Simulationsindex bringen
-#     price = df["price_EUR_per_kWh"].reindex(idx)
 
-#     # falls Lücken: auffüllen
-#     price = price.interpolate().ffill().bfill()
+def generate_price_profile(idx, csv_path):
+    import pandas as pd
 
-#     return price
+    df_raw = pd.read_csv(
+        csv_path,
+        sep=',',
+        encoding='latin1'
+    )
 
+    df_raw.columns = df_raw.columns.str.strip()
+
+    # Timestamp bauen
+    df_raw['timestamp'] = pd.to_datetime(
+        df_raw['Jahr'].astype(str) + ' ' + df_raw['Datum'].astype(str),
+        errors='coerce'
+    )
+    df_raw.dropna(subset=['timestamp'], inplace=True)
+    df_raw.set_index('timestamp', inplace=True)
+    df_raw.sort_index(inplace=True)
+
+    price_col = 'Preis in Û/kWh'
+    df_raw[price_col] = pd.to_numeric(df_raw[price_col], errors='coerce')
+    df_raw.dropna(subset=[price_col], inplace=True)
+
+    # Duplikate auflösen
+    spot_kwh = df_raw[price_col].groupby(df_raw.index).mean()
+
+    # --- DYNAMISCHE AUSWAHL STATT HARDCODING ---
+    # Wir schauen, welches Jahr in den Lastdaten (idx) steckt
+    target_year = idx[0].year
+    
+    # Prüfen, ob dieses Jahr überhaupt in der CSV existiert
+    available_years = spot_kwh.index.year.unique()
+    
+    if target_year in available_years:
+        # Wenn das Jahr existiert, nimm genau diese Daten
+        price_data = spot_kwh[spot_kwh.index.year == target_year].copy()
+    else:
+        # Fallback: Wenn das Jahr nicht existiert (z.B. Simulation 2026), 
+        # nimm das aktuellste verfügbare Jahr (2025)
+        last_year = available_years.max()
+        price_data = spot_kwh[spot_kwh.index.year == last_year].copy()
+        # Datum auf das Zieljahr "umbiegen"
+        price_data.index = price_data.index.map(lambda x: x.replace(year=target_year))
+        print(f"Warnung: Jahr {target_year} nicht in CSV. Nutze Daten von {last_year}.")
+
+    # Fixkosten addieren
+    surcharges = 0.18
+    full_price = price_data + surcharges
+
+    # Gruppieren falls durch Schaltjahre o.ä. Duplikate entstanden sind
+    full_price = full_price.groupby(full_price.index).mean()
+
+    # Auf den exakten Index der Last matchen (inkl. 15min-Schritten)
+    return full_price.reindex(idx).ffill()
