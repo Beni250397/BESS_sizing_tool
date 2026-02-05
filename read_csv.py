@@ -60,7 +60,7 @@ def load_profile(load_input, gen_input, lat=50.1319, lon=8.6838, peak_kw=20, pea
 def read_quarter_hour_csv(path):
     try:
         # Einlesen mit automatischer Erkennung (Komma, Semikolon etc.)
-        df = pd.read_csv(path, sep=None, engine='python')
+        df = pd.read_csv(path, sep=None, engine='python', encoding='utf-8-sig')
         df.columns = [c.strip() for c in df.columns]
 
         # Spezialbehandlung für den "Monat 00" Fehler in deiner CSV:
@@ -267,3 +267,4 @@ def generate_price_profile(idx):
 #     price = price.interpolate().ffill().bfill()
 
 #     return price
+
