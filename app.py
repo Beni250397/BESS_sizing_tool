@@ -10,6 +10,10 @@ from optimization import optimize_battery_size
 from plot import plot_interactive_full_period 
 from parameters import params_base
 
+def format_de(n, decimals=2):
+    """Formatiert Zahlen zu 1.234,56"""
+    return f"{n:,.{decimals}f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
 # --- INITIALISIERUNG SESSION STATE (NEU) ---
 # Wir kopieren die Werte aus params_base einmalig in den Session State.
 # So "gehören" die Werte Streamlit und werden nicht bei jedem Klick resettet.
@@ -176,6 +180,35 @@ params_base.update({
     'cyclic_loss': c_loss, 'calendar_loss': cal_loss
 })
 
+# --- NEU: PREIS-PROFIL VORSCHAU ---
+st.header("📉 Preisprofil")
+
+# Wir laden die Profile kurz vorab für die Visualisierung
+with st.spinner('Lade Profile für Vorschau...'):
+    load_preview, gen_preview = load_profile(
+        load_csv_path, 
+        gen_csv_path, 
+        lat=lat_input, 
+        lon=lon_input, 
+        peak_kw=peak_pv_input, 
+        peak_load=peak_load_input
+    )
+    price_preview = generate_price_profile(load_preview.index, 'csv/SpotPreis_2018_2025.csv')
+
+# Plot des Preisprofils (z.B. die ersten 7 Tage zur Übersicht)
+import plotly.express as px
+fig_price = px.line(
+    x=price_preview.index, 
+    y=price_preview.values, 
+    labels={'x': 'Zeit', 'y': 'Preis (€/kWh)'},
+    title="Börsenstrompreis (Spotmarkt)",
+    line_shape="hv"
+)
+fig_price.update_layout(height=300, margin=dict(l=20, r=20, t=40, b=20))
+# Optional: Nur die erste Woche anzeigen für bessere Performance beim Laden
+# fig_price.update_xaxes(range=[price_preview.index[0], price_preview.index[min(len(price_preview)-1, 672)]])
+
+st.plotly_chart(fig_price, use_container_width=True)
 # --- EXECUTION BUTTON ---
 if st.button('🚀 Optimierung und Simulation starten'):
     with st.spinner('Berechne Optimierung...'):
@@ -191,7 +224,7 @@ if st.button('🚀 Optimierung und Simulation starten'):
             peak_load=peak_load_input
         )
         
-        price_profile = generate_price_profile(load_series.index)
+        price_profile = generate_price_profile(load_series.index, 'csv/SpotPreis_2018_2025.csv')
 
         best, df_eval = optimize_battery_size(
             load_series, gen_series, price_profile, params_base, 
@@ -221,38 +254,39 @@ if st.button('🚀 Optimierung und Simulation starten'):
         runtime = time.time() - start_time
 
         # --- ERGEBNISSE ANZEIGEN ---
-        st.success(f"Berechnung abgeschlossen in {runtime:.2f} Sekunden")
+        st.success(f"Berechnung abgeschlossen in {format_de(runtime, 2)} Sekunden")
         
         st.header("📊 Analyse-Ergebnisse")
         res1, res2, res3, res4 = st.columns(4)
         
         # Spalte 1: Dimensionierung
-        res1.metric("Optimale Kapazität", f"{best['capacity_kwh']:.1f} kWh")
-        res1.metric("Max. Ladeleistung", f"{best['p_charge_kw']:.1f} kW")
-        res1.metric("Max. Entladeleistung", f"{best['p_discharge_kw']:.1f} kW")
+        res1.metric("Optimale Kapazität", f"{format_de(best['capacity_kwh'], 1)} kWh")
+        res1.metric("Max. Ladeleistung", f"{format_de(best['p_charge_kw'], 1)} kW")
+        res1.metric("Max. Entladeleistung", f"{format_de(best['p_discharge_kw'], 1)} kW")
 
-        # Spalte 2: Technik (Durchsatz & SoH)
+        # Spalte 2: Technik
         cap_loss_pct = (1 - best['soh_final'] / best_params['capacity_kwh']) * 100
-        # Berechne den Skalierungsfaktor auch hier im UI
         duration_days = (load_series.index[-1] - load_series.index[0]).total_seconds() / (24 * 3600)
         scaling_factor = 365.0 / duration_days if duration_days > 0 else 1.0
-        # Hochgerechneter Durchsatz in MWh
         yearly_th = (sim_best.get('throughput_kwh', 0.0) * scaling_factor) / 1000
-        res2.metric("Durchsatz (Jahr)", f"{yearly_th:.1f} MWh")
-        res2.metric("Finaler SoH", f"{best['soh_final']:.1f} kWh", delta=f"-{cap_loss_pct:.2f} %", delta_color="normal")
+        
+        res2.metric("Durchsatz (Jahr)", f"{format_de(yearly_th, 1)} MWh")
+        res2.metric("Finaler SoH", f"{format_de(best['soh_final'], 1)} kWh", 
+                    delta=f"-{format_de(cap_loss_pct, 2)} %", delta_color="normal")
 
         # Spalte 3: Ökonomie
         cost_with = econ_best['total_annual_cost']
         cost_no = econ_nobatt['total_cost_no_batt']
         rel_savings = ((cost_with / cost_no) - 1) * 100 if cost_no != 0 else 0
         
-        res3.metric("Jährliche Ersparnis", f"{econ_best['savings_vs_no_batt']:.2f} €")
-        res3.metric("Kosten mit BESS", f"{cost_with:.2f} €/a", delta=f"{rel_savings:.1f} %", delta_color="inverse")
-        res3.metric("Kosten ohne BESS", f"{econ_nobatt['total_cost_no_batt']:.2f} €/a")
+        res3.metric("Jährliche Ersparnis", f"{format_de(econ_best['savings_vs_no_batt'], 2)} €")
+        res3.metric("Kosten mit BESS", f"{format_de(cost_with, 2)} €/a", 
+                    delta=f"{format_de(rel_savings, 1)} %", delta_color="inverse")
+        res3.metric("Kosten ohne BESS", f"{format_de(econ_nobatt['total_cost_no_batt'], 2)} €/a")
 
         # Spalte 4: Autarkie
-        res4.metric("Autarkiegrad", f"{autarky_best*100:.1f} %", f"{(autarky_best-autarky_nobatt)*100:.1f} %")
-
+        res4.metric("Autarkiegrad", f"{format_de(autarky_best*100, 1)} %", 
+                    f"+{format_de((autarky_best-autarky_nobatt)*100, 1)} %")
         # --- PLOTTING ---
         st.header("📈 Interaktive Detailanalyse")
         
