@@ -294,31 +294,24 @@ def generate_price_profile(idx, csv_path):
     # Duplikate auflösen
     spot_kwh = df_raw[price_col].groupby(df_raw.index).mean()
 
-    # --- DYNAMISCHE AUSWAHL STATT HARDCODING ---
-    # Wir schauen, welches Jahr in den Lastdaten (idx) steckt
+    # --- Dynamische Jahresauswahl ---
     target_year = idx[0].year
-    
-    # Prüfen, ob dieses Jahr überhaupt in der CSV existiert
     available_years = spot_kwh.index.year.unique()
-    
+
     if target_year in available_years:
-        # Wenn das Jahr existiert, nimm genau diese Daten
         price_data = spot_kwh[spot_kwh.index.year == target_year].copy()
     else:
-        # Fallback: Wenn das Jahr nicht existiert (z.B. Simulation 2026), 
-        # nimm das aktuellste verfügbare Jahr (2025)
         last_year = available_years.max()
         price_data = spot_kwh[spot_kwh.index.year == last_year].copy()
-        # Datum auf das Zieljahr "umbiegen"
         price_data.index = price_data.index.map(lambda x: x.replace(year=target_year))
         print(f"Warnung: Jahr {target_year} nicht in CSV. Nutze Daten von {last_year}.")
 
-    # Fixkosten addieren
-    surcharges = 0.18
+    # Realistische Fixkosten in €/kWh
+    surcharges = 0.14  # entspricht 14 ct/kWh
     full_price = price_data + surcharges
 
-    # Gruppieren falls durch Schaltjahre o.ä. Duplikate entstanden sind
+    # Gruppieren falls Duplikate entstanden
     full_price = full_price.groupby(full_price.index).mean()
 
-    # Auf den exakten Index der Last matchen (inkl. 15min-Schritten)
+    # Auf den exakten Index der Last matchen (inkl. 15min)
     return full_price.reindex(idx).ffill()
